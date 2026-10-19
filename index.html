@@ -9,7 +9,6 @@
         :root { --bg: var(--tg-theme-bg-color, #121212); --card: var(--tg-theme-secondary-bg-color, #1e1e1e); --text: var(--tg-theme-text-color, #fff); --hint: var(--tg-theme-hint-color, #888); --btn: var(--tg-theme-button-color, #2ea6ff); --success: #2ecc71; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; padding-bottom: 80px; }
         
-        /* Карточки */
         .card { background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05); }
         .switch-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .switch { position: relative; display: inline-block; width: 50px; height: 28px; }
@@ -19,28 +18,25 @@
         input:checked + .slider { background-color: var(--success); }
         input:checked + .slider:before { transform: translateX(22px); }
 
-        /* Формы */
-        textarea, input[type="number"] { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: var(--bg); color: var(--text); font-size: 14px; box-sizing: border-box; margin-bottom: 8px; }
+        textarea, input[type="text"], input[type="number"] { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: var(--bg); color: var(--text); font-size: 14px; box-sizing: border-box; margin-bottom: 8px; }
         textarea { min-height: 80px; font-family: monospace; resize: vertical; }
         
-        /* Кнопки */
         .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-weight: 700; font-size: 16px; cursor: pointer; margin-top: 10px; }
         .btn-primary { background: var(--success); color: #fff; }
+        .btn-test { background: rgba(255,255,255,0.1); color: var(--text); padding: 10px; font-size: 14px; margin-top: 8px; }
         .btn-delete { background: rgba(231, 76, 60, 0.15); color: #e74c3c; padding: 8px 12px; font-size: 13px; font-weight: 600; border-radius: 8px; width: auto; flex: none; margin-top: 0; }
         
-        /* Заголовки */
         .header { font-size: 20px; font-weight: 700; margin-bottom: 16px; text-align: center; }
-        .sub-header { font-size: 12px; color: var(--hint); margin-bottom: 8px; display: flex; justify-content: space-between; }
+        .sub-header { font-size: 12px; color: var(--hint); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
         
-        /* Прогресс/Ожидание */
         #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--success); color: white; padding: 10px 20px; border-radius: 20px; font-weight: 600; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div class="header">⚙️ Настройка приветствий</div>
+    <div class="header">⚙️ Приветствие</div>
     
     <div class="switch-container">
-        <div style="font-weight: 600; font-size: 16px;">Включить приветствие</div>
+        <div style="font-weight: 600; font-size: 16px;">Включить рассылку</div>
         <label class="switch">
             <input type="checkbox" id="welcome-enabled" onchange="toggleWelcome()">
             <span class="slider"></span>
@@ -56,8 +52,7 @@
 
     <script>
         const tg = window.Telegram.WebApp; tg.expand();
-        // ВАЖНО: Замени эту ссылку на домен твоего НОВОГО проекта на Railway!
-        const API_URL = "worker-production-01e3.up.railway.app"; 
+        const API_URL = "https://worker-production-01e3.up.railway.app"; 
         let welcomeData = { enabled: false, messages: [] };
 
         async function fetchWelcome() {
@@ -72,22 +67,37 @@
         function renderWelcomeMessages() {
             const listEl = document.getElementById('welcome-messages-list');
             if (!welcomeData.messages || welcomeData.messages.length === 0) {
-                listEl.innerHTML = "<div style='text-align:center; color:var(--hint); padding:20px; font-size:14px;'>Пока нет сообщений. Добавь первое!</div>";
+                listEl.innerHTML = "<div style='text-align:center; color:var(--hint); padding:20px; font-size:14px;'>Пока нет сообщений.</div>";
                 return;
             }
 
             let html = "";
             welcomeData.messages.forEach((msg, index) => {
+                // Формируем строку с кнопками для отображения в поле ввода
+                let btnString = "";
+                if (msg.buttons && msg.buttons.length > 0) {
+                    btnString = msg.buttons.map(b => `${b.text} | ${b.url}`).join("\n");
+                }
+
                 html += `
                     <div class="card" style="border-left: 4px solid var(--btn);">
                         <div class="sub-header">
                             <span>Сообщение #${index + 1}</span>
-                            <button class="btn btn-delete" onclick="removeWelcomeMessage(${index})">Удалить</button>
+                            <button class="btn-delete" onclick="removeWelcomeMessage(${index})">Удалить</button>
                         </div>
-                        <textarea onchange="updateMsgText(${index}, this.value)" placeholder="Текст сообщения...">${msg.text}</textarea>
-                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;">
-                            <span style="font-size: 13px; color: var(--hint);">Задержка (сек):</span>
-                            <input type="number" value="${msg.delay}" onchange="updateMsgDelay(${index}, this.value)" style="width: 80px; margin-bottom: 0;">
+                        
+                        <textarea onchange="updateMsgText(${index}, this.value)" placeholder="Текст сообщения...">${msg.text || ''}</textarea>
+                        
+                        <input type="text" placeholder="Ссылка на картинку (http...)" value="${msg.media_url || ''}" onchange="updateMsgMedia(${index}, this.value)" style="margin-top: 4px;">
+                        
+                        <textarea placeholder="Кнопки (Текст | https://ссылка). Каждая с новой строки." onchange="updateMsgButtons(${index}, this.value)" style="min-height: 50px; font-size: 12px;">${btnString}</textarea>
+                        
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 13px; color: var(--hint);">Задержка:</span>
+                                <input type="number" value="${msg.delay || 0}" onchange="updateMsgDelay(${index}, this.value)" style="width: 70px; margin-bottom: 0; padding: 8px;">
+                            </div>
+                            <button class="btn btn-test" onclick="testMessage(${index})" style="width: auto; margin: 0; padding: 8px 16px;">👁 Проверить</button>
                         </div>
                     </div>
                 `;
@@ -107,12 +117,12 @@
         }
 
         function addWelcomeMessage() {
-            welcomeData.messages.push({ text: "Привет, {name}! Добро пожаловать.", delay: 0 });
+            welcomeData.messages.push({ text: "Привет, {name}!", delay: 0, media_url: "", buttons: [] });
             saveWelcome();
         }
 
         function removeWelcomeMessage(index) {
-            if(!confirm("Удалить это сообщение?")) return;
+            if(!confirm("Удалить сообщение?")) return;
             welcomeData.messages.splice(index, 1);
             saveWelcome();
         }
@@ -121,9 +131,27 @@
             welcomeData.messages[index].text = val;
             saveWelcome();
         }
+        
+        function updateMsgMedia(index, val) {
+            welcomeData.messages[index].media_url = val;
+            saveWelcome();
+        }
 
         function updateMsgDelay(index, val) {
             welcomeData.messages[index].delay = parseInt(val) || 0;
+            saveWelcome();
+        }
+        
+        function updateMsgButtons(index, val) {
+            const lines = val.split('\n').filter(l => l.trim());
+            const buttons = [];
+            lines.forEach(line => {
+                const parts = line.split('|');
+                if (parts.length === 2) {
+                    buttons.push({ text: parts[0].trim(), url: parts[1].trim() });
+                }
+            });
+            welcomeData.messages[index].buttons = buttons;
             saveWelcome();
         }
 
@@ -134,10 +162,27 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(welcomeData)
                 });
-                renderWelcomeMessages();
                 showToast();
-                fetchWelcome(); // обновляем данные с сервера
             } catch (e) { tg.showAlert("Ошибка сохранения"); }
+        }
+        
+        async function testMessage(index) {
+            const msg = welcomeData.messages[index];
+            const userId = tg.initDataUnsafe?.user?.id;
+            
+            if (!userId) return tg.showAlert("Ошибка: не удалось получить ID");
+            
+            tg.showAlert("Отправляю тестовое сообщение в чат...");
+            
+            try {
+                await fetch(`${API_URL}/api/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, message: msg })
+                });
+            } catch (e) {
+                tg.showAlert("Ошибка теста");
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
