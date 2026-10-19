@@ -9,7 +9,7 @@
         :root { --bg: var(--tg-theme-bg-color, #121212); --card: var(--tg-theme-secondary-bg-color, #1e1e1e); --text: var(--tg-theme-text-color, #fff); --hint: var(--tg-theme-hint-color, #888); --btn: var(--tg-theme-button-color, #2ea6ff); --success: #2ecc71; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; padding-bottom: 80px; }
         
-        .card { background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05); }
+        .card { background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05); transition: opacity 0.3s; }
         .card.disabled { opacity: 0.5; }
         
         .switch-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
@@ -31,7 +31,7 @@
         .header { font-size: 20px; font-weight: 700; margin-bottom: 16px; text-align: center; }
         .sub-header { font-size: 12px; color: var(--hint); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
         
-        #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--success); color: white; padding: 10px 20px; border-radius: 20px; font-weight: 600; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--success); color: white; padding: 10px 20px; border-radius: 20px; font-weight: 600; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 999; }
     </style>
 </head>
 <body>
@@ -56,6 +56,7 @@
         const API_URL = "https://worker-production-01e3.up.railway.app"; 
         let welcomeData = { enabled: false, messages: [] };
 
+        // 1. Загрузка данных
         async function fetchWelcome() {
             try {
                 const res = await fetch(`${API_URL}/api/welcome`);
@@ -63,9 +64,10 @@
                 if (!welcomeData.messages) welcomeData.messages = [];
                 document.getElementById('welcome-enabled').checked = welcomeData.enabled || false;
                 renderWelcomeMessages();
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error("Ошибка загрузки", e); }
         }
 
+        // 2. Отрисовка
         function renderWelcomeMessages() {
             const listEl = document.getElementById('welcome-messages-list');
             if (welcomeData.messages.length === 0) {
@@ -80,7 +82,6 @@
                     btnString = msg.buttons.map(b => `${b.text} | ${b.url}`).join("\n");
                 }
                 
-                // По умолчанию сообщение включено, если не указано иное
                 const isEnabled = msg.enabled !== false; 
 
                 html += `
@@ -119,6 +120,7 @@
             setTimeout(() => { t.style.opacity = 0; }, 1500);
         }
 
+        // 3. Действия
         function toggleWelcome() {
             welcomeData.enabled = document.getElementById('welcome-enabled').checked;
             saveWelcome();
@@ -127,7 +129,6 @@
         function toggleMsg(index, checked) {
             welcomeData.messages[index].enabled = checked;
             saveWelcome();
-            renderWelcomeMessages(); // Мгновенно перерисовываем, чтобы потускнело
         }
 
         function addWelcomeMessage() {
@@ -137,25 +138,14 @@
 
         function removeWelcomeMessage(index) {
             if(!confirm("Удалить это сообщение?")) return;
+            // Удаляем локально
             welcomeData.messages.splice(index, 1);
             saveWelcome();
-            renderWelcomeMessages(); // Перерисовываем, чтобы обновить номера
         }
 
-        function updateMsgText(index, val) {
-            welcomeData.messages[index].text = val;
-            saveWelcome();
-        }
-        
-        function updateMsgMedia(index, val) {
-            welcomeData.messages[index].media_url = val;
-            saveWelcome();
-        }
-
-        function updateMsgDelay(index, val) {
-            welcomeData.messages[index].delay = parseInt(val) || 0;
-            saveWelcome();
-        }
+        function updateMsgText(index, val) { welcomeData.messages[index].text = val; saveWelcome(); }
+        function updateMsgMedia(index, val) { welcomeData.messages[index].media_url = val; saveWelcome(); }
+        function updateMsgDelay(index, val) { welcomeData.messages[index].delay = parseInt(val) || 0; saveWelcome(); }
         
         function updateMsgButtons(index, val) {
             const lines = val.split('\n').filter(l => l.trim());
@@ -170,15 +160,23 @@
             saveWelcome();
         }
 
+        // 4. Сохранение и принудительная перезагрузка
         async function saveWelcome() {
             try {
-                await fetch(`${API_URL}/api/welcome`, {
+                const res = await fetch(`${API_URL}/api/welcome`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(welcomeData)
                 });
-                showToast();
-            } catch (e) { tg.showAlert("Ошибка сохранения"); }
+                
+                if (res.ok) {
+                    showToast();
+                    // Вот главный фикс: после сохранения принудительно загружаем свежие данные с сервера
+                    await fetchWelcome(); 
+                } else {
+                    tg.showAlert("Ошибка сохранения на сервере");
+                }
+            } catch (e) { tg.showAlert("Ошибка сети при сохранении"); }
         }
         
         async function testMessage(index) {
