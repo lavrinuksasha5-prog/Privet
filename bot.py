@@ -12,7 +12,7 @@ WELCOME_TOKEN = os.getenv("WELCOME_BOT_TOKEN")
 PORT = int(os.getenv("PORT", 8080)) 
 SOURCE_CHANNEL_ID = -1004306238403
 
-# ТВОЙ ID (только ты видишь кнопку)
+# ТВОЙ ID (только ты видишь кнопку настроек)
 ADMIN_ID = 8720671692 
 
 bot = Bot(token=WELCOME_TOKEN)
@@ -67,6 +67,10 @@ async def handle_join_request(update: ChatJoinRequest):
 async def run_welcome_chain(user_id, name, username):
     settings = load_welcome()
     for msg in settings["messages"]:
+        # Проверяем, включено ли КОНКРЕТНОЕ сообщение
+        if not msg.get("enabled", True): 
+            continue
+            
         delay = msg.get("delay", 0)
         if delay > 0: await asyncio.sleep(delay)
         await send_single_msg(user_id, msg, name, username)
@@ -75,13 +79,11 @@ async def run_welcome_chain(user_id, name, username):
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     if message.from_user.id == ADMIN_ID:
-        # Включаем кнопку меню ТОЛЬКО для админа
         web_app = WebAppInfo(url="https://lavrinuksasha5-prog.github.io/Privet/")
         menu_btn = MenuButtonWebApp(text="⚙️ Настройки", web_app=web_app)
         await bot.set_chat_menu_button(chat_id=ADMIN_ID, menu_button=menu_btn)
         await message.answer("Привет, Админ! Кнопка управления внизу 👇")
     else:
-        # Для обычных людей просто игнорируем или пишем приветствие
         await message.answer("Привет! Твоя заявка скоро будет рассмотрена.")
 
 # --- API ДЛЯ ПАНЕЛИ ---
@@ -106,7 +108,6 @@ async def handle_test_welcome(request):
         user_id = data.get("user_id")
         msg_data = data.get("message")
         
-        # Проверка, что тест запускает только админ
         if int(user_id) != ADMIN_ID:
             return web.json_response({"status": "error", "message": "Access denied"}, status=403, headers={"Access-Control-Allow-Origin": "*"})
             
