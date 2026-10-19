@@ -10,13 +10,15 @@
         body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; padding-bottom: 80px; }
         
         .card { background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05); }
+        .card.disabled { opacity: 0.5; }
+        
         .switch-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #555; transition: .4s; border-radius: 34px; }
-        .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: var(--success); }
-        input:checked + .slider:before { transform: translateX(22px); }
+        input:checked + .slider:before { transform: translateX(20px); }
 
         textarea, input[type="text"], input[type="number"] { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: var(--bg); color: var(--text); font-size: 14px; box-sizing: border-box; margin-bottom: 8px; }
         textarea { min-height: 80px; font-family: monospace; resize: vertical; }
@@ -36,7 +38,7 @@
     <div class="header">⚙️ Приветствие</div>
     
     <div class="switch-container">
-        <div style="font-weight: 600; font-size: 16px;">Включить рассылку</div>
+        <div style="font-weight: 600; font-size: 16px;">Главный выключатель</div>
         <label class="switch">
             <input type="checkbox" id="welcome-enabled" onchange="toggleWelcome()">
             <span class="slider"></span>
@@ -46,7 +48,6 @@
     <div id="welcome-messages-list"></div>
     
     <button class="btn btn-primary" onclick="addWelcomeMessage()">➕ Добавить сообщение</button>
-    <div style="font-size: 11px; color: var(--hint); text-align: center; margin-top: 12px;">Используй {name} для имени и {username} для юзернейма</div>
 
     <div id="toast">Сохранено!</div>
 
@@ -59,6 +60,7 @@
             try {
                 const res = await fetch(`${API_URL}/api/welcome`);
                 welcomeData = await res.json();
+                if (!welcomeData.messages) welcomeData.messages = [];
                 document.getElementById('welcome-enabled').checked = welcomeData.enabled || false;
                 renderWelcomeMessages();
             } catch (e) { console.error(e); }
@@ -66,30 +68,36 @@
 
         function renderWelcomeMessages() {
             const listEl = document.getElementById('welcome-messages-list');
-            if (!welcomeData.messages || welcomeData.messages.length === 0) {
+            if (welcomeData.messages.length === 0) {
                 listEl.innerHTML = "<div style='text-align:center; color:var(--hint); padding:20px; font-size:14px;'>Пока нет сообщений.</div>";
                 return;
             }
 
             let html = "";
             welcomeData.messages.forEach((msg, index) => {
-                // Формируем строку с кнопками для отображения в поле ввода
                 let btnString = "";
                 if (msg.buttons && msg.buttons.length > 0) {
                     btnString = msg.buttons.map(b => `${b.text} | ${b.url}`).join("\n");
                 }
+                
+                // По умолчанию сообщение включено, если не указано иное
+                const isEnabled = msg.enabled !== false; 
 
                 html += `
-                    <div class="card" style="border-left: 4px solid var(--btn);">
+                    <div class="card ${isEnabled ? '' : 'disabled'}" style="border-left: 4px solid ${isEnabled ? 'var(--btn)' : '#555'};">
                         <div class="sub-header">
-                            <span>Сообщение #${index + 1}</span>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label class="switch" style="width: 34px; height: 18px;">
+                                    <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleMsg(${index}, this.checked)">
+                                    <span class="slider" style="border-radius: 34px;"></span>
+                                </label>
+                                <span>Сообщение #${index + 1}</span>
+                            </div>
                             <button class="btn-delete" onclick="removeWelcomeMessage(${index})">Удалить</button>
                         </div>
                         
                         <textarea onchange="updateMsgText(${index}, this.value)" placeholder="Текст сообщения...">${msg.text || ''}</textarea>
-                        
-                        <input type="text" placeholder="Ссылка на картинку (http...)" value="${msg.media_url || ''}" onchange="updateMsgMedia(${index}, this.value)" style="margin-top: 4px;">
-                        
+                        <input type="text" placeholder="Ссылка на картинку (http...)" value="${msg.media_url || ''}" onchange="updateMsgMedia(${index}, this.value)">
                         <textarea placeholder="Кнопки (Текст | https://ссылка). Каждая с новой строки." onchange="updateMsgButtons(${index}, this.value)" style="min-height: 50px; font-size: 12px;">${btnString}</textarea>
                         
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px;">
@@ -116,15 +124,22 @@
             saveWelcome();
         }
 
+        function toggleMsg(index, checked) {
+            welcomeData.messages[index].enabled = checked;
+            saveWelcome();
+            renderWelcomeMessages(); // Мгновенно перерисовываем, чтобы потускнело
+        }
+
         function addWelcomeMessage() {
-            welcomeData.messages.push({ text: "Привет, {name}!", delay: 0, media_url: "", buttons: [] });
+            welcomeData.messages.push({ text: "Привет, {name}!", delay: 0, media_url: "", buttons: [], enabled: true });
             saveWelcome();
         }
 
         function removeWelcomeMessage(index) {
-            if(!confirm("Удалить сообщение?")) return;
+            if(!confirm("Удалить это сообщение?")) return;
             welcomeData.messages.splice(index, 1);
             saveWelcome();
+            renderWelcomeMessages(); // Перерисовываем, чтобы обновить номера
         }
 
         function updateMsgText(index, val) {
@@ -169,10 +184,7 @@
         async function testMessage(index) {
             const msg = welcomeData.messages[index];
             const userId = tg.initDataUnsafe?.user?.id;
-            
-            if (!userId) return tg.showAlert("Ошибка: не удалось получить ID");
-            
-            tg.showAlert("Отправляю тестовое сообщение в чат...");
+            if (!userId) return tg.showAlert("Ошибка: нет ID");
             
             try {
                 await fetch(`${API_URL}/api/test`, {
@@ -180,14 +192,10 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: userId, message: msg })
                 });
-            } catch (e) {
-                tg.showAlert("Ошибка теста");
-            }
+            } catch (e) { tg.showAlert("Ошибка теста"); }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            fetchWelcome();
-        });
+        document.addEventListener('DOMContentLoaded', () => { fetchWelcome(); });
     </script>
 </body>
 </html>
