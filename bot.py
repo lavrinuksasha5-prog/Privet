@@ -3,7 +3,7 @@ import os
 import json
 from pathlib import Path
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import ChatJoinRequest, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ChatJoinRequest, Message, InlineKeyboardMarkup, InlineKeyboardButton, MenuButtonWebApp, MenuButtonCommands, WebAppInfo
 from aiogram.filters import Command
 from aiohttp import web
 
@@ -11,6 +11,9 @@ from aiohttp import web
 WELCOME_TOKEN = os.getenv("WELCOME_BOT_TOKEN")
 PORT = int(os.getenv("PORT", 8080)) 
 SOURCE_CHANNEL_ID = -1004306238403
+
+# ТВОЙ ID (только ты видишь кнопку)
+ADMIN_ID = 8720671692 
 
 bot = Bot(token=WELCOME_TOKEN)
 dp = Dispatcher()
@@ -28,12 +31,11 @@ def load_welcome():
 def save_welcome(data):
     with open(WELCOME_FILE, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
 
-# --- ФУНКЦИЯ ОТПРАВКИ ОДНОГО СООБЩЕНИЯ ---
+# --- ОТПРАВКА СООБЩЕНИЙ ---
 async def send_single_msg(chat_id, msg_data, name, username):
     text = msg_data.get("text", "").replace("{name}", name).replace("{username}", f"@{username}" if username else "")
     media_url = msg_data.get("media_url", "").strip()
     
-    # Собираем кнопки
     kb = None
     buttons = msg_data.get("buttons", [])
     if buttons:
@@ -60,10 +62,7 @@ async def handle_join_request(update: ChatJoinRequest):
     if not settings.get("enabled", False) or not settings.get("messages"): return
 
     user = update.from_user
-    name = user.first_name
-    username = user.username if user.username else ""
-    
-    asyncio.create_task(run_welcome_chain(user.id, name, username))
+    asyncio.create_task(run_welcome_chain(user.id, user.first_name, user.username if user.username else ""))
 
 async def run_welcome_chain(user_id, name, username):
     settings = load_welcome()
@@ -72,7 +71,20 @@ async def run_welcome_chain(user_id, name, username):
         if delay > 0: await asyncio.sleep(delay)
         await send_single_msg(user_id, msg, name, username)
 
-# --- API ---
+# --- КОМАНДА /start (Только для Админа) ---
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
+    if message.from_user.id == ADMIN_ID:
+        # Включаем кнопку меню ТОЛЬКО для админа
+        web_app = WebAppInfo(url="https://lavrinuksasha5-prog.github.io/Privet/")
+        menu_btn = MenuButtonWebApp(text="⚙️ Настройки", web_app=web_app)
+        await bot.set_chat_menu_button(chat_id=ADMIN_ID, menu_button=menu_btn)
+        await message.answer("Привет, Админ! Кнопка управления внизу 👇")
+    else:
+        # Для обычных людей просто игнорируем или пишем приветствие
+        await message.answer("Привет! Твоя заявка скоро будет рассмотрена.")
+
+# --- API ДЛЯ ПАНЕЛИ ---
 async def handle_get_welcome(request):
     return web.json_response(load_welcome(), headers={"Access-Control-Allow-Origin": "*"})
 
@@ -86,7 +98,6 @@ async def handle_save_welcome(request):
     except Exception as e:
         return web.json_response({"status": "error", "message": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
 
-# --- API ДЛЯ ТЕСТА (Проверка) ---
 async def handle_test_welcome(request):
     if request.method == 'OPTIONS': 
         return web.Response(headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type"})
@@ -95,7 +106,10 @@ async def handle_test_welcome(request):
         user_id = data.get("user_id")
         msg_data = data.get("message")
         
-        # Отправляем тестовое сообщение пользователю, который нажал кнопку
+        # Проверка, что тест запускает только админ
+        if int(user_id) != ADMIN_ID:
+            return web.json_response({"status": "error", "message": "Access denied"}, status=403, headers={"Access-Control-Allow-Origin": "*"})
+            
         await send_single_msg(user_id, msg_data, "Тест", "test")
         return web.json_response({"status": "ok"}, headers={"Access-Control-Allow-Origin": "*"})
     except Exception as e:
@@ -116,6 +130,9 @@ async def main():
     await site.start()
     
     await bot.delete_webhook(drop_pending_updates=True)
+    # По умолчанию у всех убираем кнопку меню
+    await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
