@@ -6,7 +6,14 @@
     <title>Welcome Manager</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root { --bg: var(--tg-theme-bg-color, #121212); --card: var(--tg-theme-secondary-bg-color, #1e1e1e); --text: var(--tg-theme-text-color, #fff); --hint: var(--tg-theme-hint-color, #888); --btn: var(--tg-theme-button-color, #2ea6ff); --success: #2ecc71; }
+        :root { 
+            --bg: var(--tg-theme-bg-color, #121212); 
+            --card: var(--tg-theme-secondary-bg-color, #1e1e1e); 
+            --text: var(--tg-theme-text-color, #fff); 
+            --hint: var(--tg-theme-hint-color, #888); 
+            --btn: var(--tg-theme-button-color, #2ea6ff); 
+            --success: #2ecc71; 
+        }
         body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; padding-bottom: 80px; }
         
         .card { background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05); transition: opacity 0.3s; }
@@ -49,12 +56,28 @@
     
     <button class="btn btn-primary" onclick="addWelcomeMessage()">➕ Добавить сообщение</button>
 
+    <!-- БЛОК FOMO -->
+    <div class="header" style="margin-top: 30px; font-size: 18px;">🔥 Последний шанс (FOMO)</div>
+    <div class="card">
+        <div class="switch-container" style="margin-bottom: 10px;">
+            <div style="font-weight: 600;">Включить повторку</div>
+            <label class="switch">
+                <input type="checkbox" id="fomo-enabled" onchange="toggleFomo()">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <input type="number" id="fomo-delay" placeholder="Задержка (в минутах)" onchange="updateFomo('delay', this.value)" style="margin-bottom: 8px;">
+        <textarea id="fomo-text" placeholder="Текст (например: Закрываю вход в VIP, последний шанс -)" onchange="updateFomo('text', this.value)"></textarea>
+        <button class="btn btn-test" onclick="testFomo()" style="margin-top: 8px;">👁 Проверить FOMO</button>
+    </div>
+
     <div id="toast">Сохранено!</div>
 
     <script>
         const tg = window.Telegram.WebApp; tg.expand();
+        // Ссылка на твой новый сервис Railway (для приветствий)
         const API_URL = "https://worker-production-01e3.up.railway.app"; 
-        let welcomeData = { enabled: false, messages: [] };
+        let welcomeData = { enabled: false, messages: [], fomo: { enabled: false, delay: 0, text: "" } };
 
         // 1. Загрузка данных
         async function fetchWelcome() {
@@ -62,28 +85,32 @@
                 const res = await fetch(`${API_URL}/api/welcome`);
                 welcomeData = await res.json();
                 if (!welcomeData.messages) welcomeData.messages = [];
+                if (!welcomeData.fomo) welcomeData.fomo = { enabled: false, delay: 0, text: "" };
+                
                 document.getElementById('welcome-enabled').checked = welcomeData.enabled || false;
+                document.getElementById('fomo-enabled').checked = welcomeData.fomo.enabled || false;
+                document.getElementById('fomo-delay').value = welcomeData.fomo.delay || '';
+                document.getElementById('fomo-text').value = welcomeData.fomo.text || '';
+                
                 renderWelcomeMessages();
             } catch (e) { console.error("Ошибка загрузки", e); }
         }
 
-        // 2. Отрисовка
+        // 2. Отрисовка списка сообщений
         function renderWelcomeMessages() {
             const listEl = document.getElementById('welcome-messages-list');
             if (welcomeData.messages.length === 0) {
                 listEl.innerHTML = "<div style='text-align:center; color:var(--hint); padding:20px; font-size:14px;'>Пока нет сообщений.</div>";
                 return;
             }
-
             let html = "";
             welcomeData.messages.forEach((msg, index) => {
                 let btnString = "";
                 if (msg.buttons && msg.buttons.length > 0) {
                     btnString = msg.buttons.map(b => `${b.text} | ${b.url}`).join("\n");
                 }
-                
                 const isEnabled = msg.enabled !== false; 
-
+                
                 html += `
                     <div class="card ${isEnabled ? '' : 'disabled'}" style="border-left: 4px solid ${isEnabled ? 'var(--btn)' : '#555'};">
                         <div class="sub-header">
@@ -98,15 +125,17 @@
                         </div>
                         
                         <textarea onchange="updateMsgText(${index}, this.value)" placeholder="Текст сообщения...">${msg.text || ''}</textarea>
-                        <input type="text" placeholder="Ссылка на картинку (http...)" value="${msg.media_url || ''}" onchange="updateMsgMedia(${index}, this.value)">
+                        
+                        <input type="text" placeholder="Код медиа (отправь фото боту)" value="${msg.media_url || ''}" onchange="updateMsgMedia(${index}, this.value)">
+                        
                         <textarea placeholder="Кнопки (Текст | https://ссылка). Каждая с новой строки." onchange="updateMsgButtons(${index}, this.value)" style="min-height: 50px; font-size: 12px;">${btnString}</textarea>
                         
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px;">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 13px; color: var(--hint);">Задержка:</span>
+                                <span style="font-size: 13px; color: var(--hint);">Задержка (сек):</span>
                                 <input type="number" value="${msg.delay || 0}" onchange="updateMsgDelay(${index}, this.value)" style="width: 70px; margin-bottom: 0; padding: 8px;">
                             </div>
-                            <button class="btn btn-test" onclick="testMessage(${index})" style="width: auto; margin: 0; padding: 8px 16px;">👁 Проверить</button>
+                            <button class="btn btn-test" onclick="testMessage(${index})" style="width: auto; margin: 0; padding: 8px 16px;">👁 Тест</button>
                         </div>
                     </div>
                 `;
@@ -120,47 +149,45 @@
             setTimeout(() => { t.style.opacity = 0; }, 1500);
         }
 
-        // 3. Действия
-        function toggleWelcome() {
-            welcomeData.enabled = document.getElementById('welcome-enabled').checked;
+        // 3. FOMO (Последний шанс)
+        function toggleFomo() {
+            welcomeData.fomo.enabled = document.getElementById('fomo-enabled').checked;
             saveWelcome();
         }
-
-        function toggleMsg(index, checked) {
-            welcomeData.messages[index].enabled = checked;
+        function updateFomo(key, val) {
+            welcomeData.fomo[key] = key === 'delay' ? parseInt(val) : val;
             saveWelcome();
         }
-
-        function addWelcomeMessage() {
-            welcomeData.messages.push({ text: "Привет, {name}!", delay: 0, media_url: "", buttons: [], enabled: true });
-            saveWelcome();
+        async function testFomo() {
+            const userId = tg.initDataUnsafe?.user?.id;
+            if (!userId) return;
+            tg.showAlert("Тест FOMO отправлен");
+            const msg = { text: welcomeData.fomo.text || "Последний шанс!", buttons: [{text: "Зайти", url: "https://t.me"}] };
+            await fetch(`${API_URL}/api/test`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, message: msg })
+            });
         }
 
-        function removeWelcomeMessage(index) {
-            if(!confirm("Удалить это сообщение?")) return;
-            // Удаляем локально
-            welcomeData.messages.splice(index, 1);
-            saveWelcome();
-        }
-
+        // 4. Действия с сообщениями
+        function toggleWelcome() { welcomeData.enabled = document.getElementById('welcome-enabled').checked; saveWelcome(); }
+        function toggleMsg(index, checked) { welcomeData.messages[index].enabled = checked; saveWelcome(); }
+        function addWelcomeMessage() { welcomeData.messages.push({ text: "Привет, {name}!", delay: 0, media_url: "", buttons: [], enabled: true }); saveWelcome(); }
+        function removeWelcomeMessage(index) { if(!confirm("Удалить это сообщение?")) return; welcomeData.messages.splice(index, 1); saveWelcome(); }
         function updateMsgText(index, val) { welcomeData.messages[index].text = val; saveWelcome(); }
         function updateMsgMedia(index, val) { welcomeData.messages[index].media_url = val; saveWelcome(); }
         function updateMsgDelay(index, val) { welcomeData.messages[index].delay = parseInt(val) || 0; saveWelcome(); }
-        
         function updateMsgButtons(index, val) {
-            const lines = val.split('\n').filter(l => l.trim());
-            const buttons = [];
-            lines.forEach(line => {
+            const buttons = val.split('\n').filter(l => l.trim()).map(line => {
                 const parts = line.split('|');
-                if (parts.length === 2) {
-                    buttons.push({ text: parts[0].trim(), url: parts[1].trim() });
-                }
-            });
+                return parts.length === 2 ? { text: parts[0].trim(), url: parts[1].trim() } : null;
+            }).filter(Boolean);
             welcomeData.messages[index].buttons = buttons;
             saveWelcome();
         }
 
-        // 4. Сохранение и принудительная перезагрузка
+        // 5. Сохранение и принудительное обновление
         async function saveWelcome() {
             try {
                 const res = await fetch(`${API_URL}/api/welcome`, {
@@ -168,22 +195,19 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(welcomeData)
                 });
-                
                 if (res.ok) {
                     showToast();
-                    // Вот главный фикс: после сохранения принудительно загружаем свежие данные с сервера
-                    await fetchWelcome(); 
+                    await fetchWelcome(); // Принудительно перечитываем данные с сервера
                 } else {
                     tg.showAlert("Ошибка сохранения на сервере");
                 }
-            } catch (e) { tg.showAlert("Ошибка сети при сохранении"); }
+            } catch (e) { tg.showAlert("Ошибка сети"); }
         }
         
         async function testMessage(index) {
             const msg = welcomeData.messages[index];
             const userId = tg.initDataUnsafe?.user?.id;
-            if (!userId) return tg.showAlert("Ошибка: нет ID");
-            
+            if (!userId) return;
             try {
                 await fetch(`${API_URL}/api/test`, {
                     method: 'POST',
